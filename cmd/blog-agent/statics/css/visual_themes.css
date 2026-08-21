@@ -312,6 +312,35 @@ button,
     gap: 9px 14px;
 }
 
+.atlas-lab-filters {
+    display: flex;
+    gap: 6px;
+    margin-top: 16px;
+}
+
+.atlas-lab-filter {
+    display: inline-flex;
+    gap: 12px;
+    align-items: center;
+    min-height: 30px;
+    padding: 5px 10px;
+    color: var(--atlas-muted);
+    border: 1px solid var(--atlas-line-soft);
+    background: transparent;
+    cursor: pointer;
+    font: 9px/1 var(--atlas-font-mono);
+    letter-spacing: .06em;
+}
+
+.atlas-lab-filter strong { color: var(--atlas-brass); font-weight: 400; }
+.atlas-lab-filter:hover,
+.atlas-lab-filter.is-active {
+    color: var(--atlas-bg-deep);
+    border-color: var(--atlas-brass);
+    background: var(--atlas-brass);
+}
+.atlas-lab-filter.is-active strong { color: currentColor; }
+
 .atlas-filter {
     position: relative;
     padding: 3px 3px 6px;
@@ -401,6 +430,21 @@ button,
     aspect-ratio: 1;
     margin-inline: auto;
     transition: transform .28s ease, filter .28s ease;
+}
+
+.specimen-lab-mark {
+    position: absolute;
+    z-index: 2;
+    top: 8px;
+    right: 4px;
+    padding: 5px 7px;
+    color: var(--atlas-bg-deep);
+    border: 1px solid var(--atlas-brass);
+    background: var(--atlas-brass);
+    box-shadow: 3px 3px 0 color-mix(in srgb, var(--atlas-coral) 32%, transparent);
+    font: 7px/1 var(--atlas-font-mono);
+    letter-spacing: .08em;
+    pointer-events: none;
 }
 
 .symbol-image {
@@ -615,6 +659,21 @@ button,
 .dialog-palette span { padding-left: 8px; color: var(--atlas-muted); font: 8px var(--atlas-font-mono); }
 .dialog-palette strong { justify-self: end; font: 9px var(--atlas-font-mono); }
 .dialog-tip { margin: 15px 0 0; }
+
+.dialog-lab {
+    display: inline-flex;
+    margin-top: 18px;
+    padding: 11px 16px;
+    color: var(--atlas-bg-deep);
+    border: 1px solid var(--atlas-brass);
+    background: var(--atlas-brass);
+    font: 9px/1 var(--atlas-font-mono);
+    letter-spacing: .08em;
+    text-decoration: none;
+}
+
+.dialog-lab:hover { color: var(--atlas-paper); background: transparent; }
+.dialog-lab[hidden] { display: none; }
 
 .atlas-toast {
     position: fixed;

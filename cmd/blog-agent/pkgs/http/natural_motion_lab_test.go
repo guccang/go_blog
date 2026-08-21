@@ -131,7 +131,7 @@ func TestCeladonRainRendererUsesPhysicalWebGL2Passes(t *testing.T) {
 	}
 }
 
-func TestNaturalMotionLabIsWiredIntoToolsOnly(t *testing.T) {
+func TestNaturalMotionLabIsWiredIntoAtlasOnly(t *testing.T) {
 	checks := []struct {
 		path     string
 		expected string
@@ -139,7 +139,7 @@ func TestNaturalMotionLabIsWiredIntoToolsOnly(t *testing.T) {
 		{path: "http_core.go", expected: `h.HandleFunc("/tools/natural-motion-lab", HandleNaturalMotionLab)`},
 		{path: "http_lifecycle.go", expected: `view.PageNaturalMotionLab(w)`},
 		{path: "templates.go", expected: `natural_motion_lab.template`},
-		{path: filepath.Join("..", "..", "templates", "tools.template"), expected: `href="/tools/natural-motion-lab"`},
+		{path: filepath.Join("..", "..", "statics", "js", "visual_themes.js"), expected: `url: '/tools/natural-motion-lab'`},
 	}
 	for _, check := range checks {
 		content, err := os.ReadFile(check.path)
@@ -151,10 +151,7 @@ func TestNaturalMotionLabIsWiredIntoToolsOnly(t *testing.T) {
 		}
 	}
 
-	for _, pagePath := range []string{
-		filepath.Join("..", "..", "templates", "main.template"),
-		filepath.Join("..", "..", "templates", "visual_themes.template"),
-	} {
+	for _, pagePath := range []string{filepath.Join("..", "..", "templates", "main.template")} {
 		content, err := os.ReadFile(pagePath)
 		if err != nil {
 			t.Fatalf("读取 %s 失败: %v", pagePath, err)
@@ -162,5 +159,13 @@ func TestNaturalMotionLabIsWiredIntoToolsOnly(t *testing.T) {
 		if strings.Contains(string(content), "celadon_rain_lab") || strings.Contains(string(content), "natural_motion") {
 			t.Errorf("未验收动效不应接入 %s", pagePath)
 		}
+	}
+
+	toolsContent, err := os.ReadFile(filepath.Join("..", "..", "templates", "tools.template"))
+	if err != nil {
+		t.Fatalf("读取工具页模板失败: %v", err)
+	}
+	if strings.Contains(string(toolsContent), `href="/tools/natural-motion-lab"`) {
+		t.Error("青瓷雨实验室入口应从工具页迁移到视觉主题图鉴")
 	}
 }

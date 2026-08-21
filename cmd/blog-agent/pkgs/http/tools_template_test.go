@@ -23,6 +23,9 @@ func TestToolsPageUsesUnifiedVisualLanguage(t *testing.T) {
 			t.Errorf("工具页缺少 %q", expected)
 		}
 	}
+	if strings.Contains(page, `href="/tools/natural-motion-lab"`) || strings.Contains(page, `href="/tools/dunhuang-motion-lab"`) {
+		t.Error("动效实验室入口应统一收纳在视觉主题图鉴")
+	}
 
 	styles, err := os.ReadFile(filepath.Join("..", "..", "statics", "css", "tools.css"))
 	if err != nil {

@@ -110,12 +110,45 @@ func TestVisualThemeAtlasKeepsUnapprovedMotionOutOfDialog(t *testing.T) {
 		t.Fatalf("读取视觉主题模板失败: %v", err)
 	}
 	page := string(templateContent)
-	if !strings.Contains(page, `/js/visual_themes.js?v=5`) {
+	if !strings.Contains(page, `/js/visual_themes.js?v=6`) {
 		t.Error("视觉主题模板未更新脚本缓存版本")
 	}
 	for _, removed := range []string{"natural_motion.js", "natural_motion.css"} {
 		if strings.Contains(page, removed) {
 			t.Errorf("视觉主题模板不应加载未验收动效 %q", removed)
+		}
+	}
+}
+
+func TestVisualThemeAtlasOwnsMotionLabDirectory(t *testing.T) {
+	scriptContent, err := os.ReadFile(filepath.Join("..", "..", "statics", "js", "visual_themes.js"))
+	if err != nil {
+		t.Fatalf("读取视觉主题脚本失败: %v", err)
+	}
+	script := string(scriptContent)
+	for _, expected := range []string{
+		"motionLabs",
+		"'001': { url: '/tools/natural-motion-lab'",
+		"'004': { url: '/tools/dunhuang-motion-lab'",
+		"labFilterRoot", "activeLabFilter", "renderLabFilters",
+		"data-lab-filter", "specimen-lab-mark", "dialog-lab", "theme.lab",
+	} {
+		if !strings.Contains(script, expected) {
+			t.Errorf("视觉主题图鉴缺少实验室目录能力 %q", expected)
+		}
+	}
+	if count := strings.Count(script, "url: '/tools/"); count != 2 {
+		t.Errorf("当前应登记 2 个动效实验室，实际为 %d", count)
+	}
+
+	templateContent, err := os.ReadFile(filepath.Join("..", "..", "templates", "visual_themes.template"))
+	if err != nil {
+		t.Fatalf("读取视觉主题模板失败: %v", err)
+	}
+	page := string(templateContent)
+	for _, expected := range []string{`id="lab-filters"`, `id="dialog-lab"`} {
+		if !strings.Contains(page, expected) {
+			t.Errorf("视觉主题模板缺少 %q", expected)
 		}
 	}
 }
@@ -131,8 +164,8 @@ func TestVisualThemeAtlasPageIsWiredIntoTools(t *testing.T) {
 		`THE HANGING ARCHIVE`,
 		`id="theme-gallery"`,
 		`data-hero-theme="006"`,
-		`/css/visual_themes.css?v=4`,
-		`/js/visual_themes.js?v=5`,
+		`/css/visual_themes.css?v=5`,
+		`/js/visual_themes.js?v=6`,
 		`/js/theme.js?v=7`,
 		`/css/theme.css?v=7`,
 	} {

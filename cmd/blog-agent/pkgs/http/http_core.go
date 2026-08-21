@@ -362,6 +362,7 @@ func Init() int {
 	h.HandleFunc("/tools", HandleTools)
 	h.HandleFunc("/tools/visual-themes", HandleVisualThemes)
 	h.HandleFunc("/tools/natural-motion-lab", HandleNaturalMotionLab)
+	h.HandleFunc("/tools/dunhuang-motion-lab", HandleDunhuangMotionLab)
 	h.HandleFunc("/api/tools/time", tools.TimeToolHandler)
 	h.HandleFunc("/api/tools/data", tools.DataProcessHandler)
 	h.HandleFunc("/api/tools/calculator", tools.CalculatorHandler)

@@ -104,14 +104,6 @@
                 </div>
                 <span class="nav-card-arrow" aria-hidden="true">↗</span>
             </a>
-            <a class="tool-nav-card tool-nav-card-link" href="/tools/natural-motion-lab">
-                <div class="nav-card-icon">雨</div>
-                <div class="nav-card-content">
-                    <h3>青瓷雨实验室</h3>
-                    <p>001 自然动效质量样板</p>
-                </div>
-                <span class="nav-card-arrow" aria-hidden="true">↗</span>
-            </a>
         </div>
 
         <!-- 工具内容区域 -->

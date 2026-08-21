@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-page="dunhuang-motion-lab">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="dark">
+    <title>004 敦煌暮色 · 自然动效实验室</title>
+    <script src="/js/theme.js?v=7"></script>
+    <link rel="stylesheet" href="/css/theme.css?v=8">
+    <link rel="stylesheet" href="/css/dunhuang_motion_lab.css?v=1">
+</head>
+<body class="dunhuang-body">
+    <a class="skip-link" href="#dunhuangStage">跳到动效舞台</a>
+
+    <header class="lab-header">
+        <a href="/tools/visual-themes">← 返回主题图鉴</a>
+        <p><span>ARCHIVE NO. 004</span><strong>DUNHUANG DUSK LAB</strong></p>
+        <a href="/tools/natural-motion-lab">查看 001 青瓷雨 ↗</a>
+    </header>
+
+    <main>
+        <section class="lab-intro" aria-labelledby="labTitle">
+            <div>
+                <p>矿物色 · 风与壁画实验</p>
+                <h1 id="labTitle">敦煌暮色</h1>
+            </div>
+            <p>让人物留在壁画里，让风只带走飘带、金尘和光。每层运动拥有自己的重量、响应与景深。</p>
+        </section>
+
+        <section class="dunhuang-stage" id="dunhuangStage" data-render-state="loading"
+                 data-dunhuang-asset="/images/visual-symbols/visual-symbols-01.webp"
+                 aria-label="004 敦煌暮色 WebGL2 动效样板">
+            <canvas id="dunhuangCanvas" aria-hidden="true"></canvas>
+
+            <div class="stage-status" id="stageStatus" role="status" aria-live="polite">
+                <span></span>
+                <strong id="stageStatusTitle">正在初始化 WebGL2</strong>
+                <small id="stageStatusDetail">准备飘带、沙尘与暮色光场。</small>
+            </div>
+
+            <div class="stage-title" aria-hidden="true">
+                <span>矿物金穿过风沙</span>
+                <strong>DUSK<br>OVER MOGAO</strong>
+            </div>
+
+            <div class="depth-scale" aria-hidden="true">
+                <span>FAR / 壁尘</span><span>MID / 飘带</span><span>NEAR / 金砂</span>
+            </div>
+
+            <div class="stage-instruments">
+                <details class="lab-controls" open>
+                    <summary>风沙观测 <span>ATMOSPHERE</span></summary>
+                    <div class="control-body">
+                        <label for="windStrengthControl"><span>风场强度</span><output id="windStrengthValue">0.90</output></label>
+                        <input id="windStrengthControl" type="range" min="0" max="2" value="0.9" step="0.05">
+
+                        <fieldset class="wind-compass" id="windCompass" data-direction="west" style="--wind-flow-angle: 0deg">
+                            <legend><span>风向</span><output id="windDirectionValue">西风 W → E · 270°</output></legend>
+                            <div class="wind-compass__dial">
+                                <button class="wind-direction wind-direction--north" type="button" data-wind-direction="north" aria-label="北风 0°，N → S" aria-pressed="false"><strong>北</strong><small>N→S</small></button>
+                                <button class="wind-direction wind-direction--northeast" type="button" data-wind-direction="northeast" aria-label="东北风 45°，NE → SW" aria-pressed="false"><strong>东北</strong><small>NE→SW</small></button>
+                                <button class="wind-direction wind-direction--east" type="button" data-wind-direction="east" aria-label="东风 90°，E → W" aria-pressed="false"><strong>东</strong><small>E→W</small></button>
+                                <button class="wind-direction wind-direction--southeast" type="button" data-wind-direction="southeast" aria-label="东南风 135°，SE → NW" aria-pressed="false"><strong>东南</strong><small>SE→NW</small></button>
+                                <button class="wind-direction wind-direction--south" type="button" data-wind-direction="south" aria-label="南风 180°，S → N" aria-pressed="false"><strong>南</strong><small>S→N</small></button>
+                                <button class="wind-direction wind-direction--southwest" type="button" data-wind-direction="southwest" aria-label="西南风 225°，SW → NE" aria-pressed="false"><strong>西南</strong><small>SW→NE</small></button>
+                                <button class="wind-direction wind-direction--west" type="button" data-wind-direction="west" aria-label="西风 270°，W → E" aria-pressed="true"><strong>西</strong><small>W→E</small></button>
+                                <button class="wind-direction wind-direction--northwest" type="button" data-wind-direction="northwest" aria-label="西北风 315°，NW → SE" aria-pressed="false"><strong>西北</strong><small>NW→SE</small></button>
+                                <span class="wind-compass__needle" aria-hidden="true"><i>→</i></span>
+                            </div>
+                            <p id="windDirectionDetail">气象角度 270° · 来自西方，向东方流动。</p>
+                        </fieldset>
+
+                        <label for="dustDensityControl"><span>沙尘密度</span><output id="dustDensityValue">0.72</output></label>
+                        <input id="dustDensityControl" type="range" min="0.1" max="1.4" value="0.72" step="0.02">
+
+                        <div class="control-actions">
+                            <button id="gustButton" type="button">扬起金尘</button>
+                            <button id="pauseButton" type="button" aria-pressed="false">暂停</button>
+                            <button id="resetButton" type="button">重置</button>
+                        </div>
+                        <p>移动指针会扰动局部飘带；“扬起金尘”注入一次短促阵风。</p>
+                    </div>
+                </details>
+
+                <details class="ribbon-controls" open>
+                    <summary>飘带动力 <span>RIBBON</span></summary>
+                    <div class="control-body">
+                        <label for="ribbonAmplitudeControl"><span>飘带摆幅</span><output id="ribbonAmplitudeValue">0.72</output></label>
+                        <input id="ribbonAmplitudeControl" type="range" min="0" max="1.4" value="0.72" step="0.02">
+                        <label for="ribbonTensionControl"><span>织物张力</span><output id="ribbonTensionValue">0.58</output></label>
+                        <input id="ribbonTensionControl" type="range" min="0.08" max="0.95" value="0.58" step="0.01">
+                        <label for="ribbonResponseControl"><span>风场响应</span><output id="ribbonResponseValue">0.80</output></label>
+                        <input id="ribbonResponseControl" type="range" min="0.1" max="1.3" value="0.8" step="0.02">
+                    </div>
+                </details>
+
+                <details class="light-controls" id="lightInstrument" data-breathing="on" data-tyndall="on" open>
+                    <summary>暮色光场 <span>OPTICS</span></summary>
+                    <div class="control-body">
+                        <label for="lightStrengthControl"><span>月轮光强</span><output id="lightStrengthValue">0.78</output></label>
+                        <input id="lightStrengthControl" type="range" min="0.15" max="1.3" value="0.78" step="0.01">
+                        <label for="lightXControl"><span>水平位置</span><output id="lightXValue">34%</output></label>
+                        <input id="lightXControl" type="range" min="0.12" max="0.88" value="0.34" step="0.01">
+                        <label for="lightYControl"><span>垂直位置</span><output id="lightYValue">72%</output></label>
+                        <input id="lightYControl" type="range" min="0.3" max="0.94" value="0.72" step="0.01">
+
+                        <section class="light-effect light-effect--breathing" aria-labelledby="breathingTitle">
+                            <header><span><strong id="breathingTitle">呼吸月光</strong><small>月轮、壁面与金尘共同起伏</small></span><button class="effect-toggle" id="breathingToggle" type="button" role="switch" aria-checked="true">已开启</button></header>
+                            <div class="effect-sliders">
+                                <label for="breathStrengthControl"><span>呼吸幅度</span><output id="breathStrengthValue">0.24</output></label>
+                                <input id="breathStrengthControl" type="range" min="0" max="0.6" value="0.24" step="0.01">
+                                <label for="breathPeriodControl"><span>呼吸周期</span><output id="breathPeriodValue">7.0 s</output></label>
+                                <input id="breathPeriodControl" type="range" min="3" max="16" value="7" step="0.5">
+                            </div>
+                        </section>
+
+                        <section class="light-effect light-effect--tyndall" aria-labelledby="tyndallTitle">
+                            <header><span><strong id="tyndallTitle">沙尘散射</strong><small>矿物微粒中的丁达尔现象</small></span><button class="effect-toggle" id="tyndallToggle" type="button" role="switch" aria-checked="true">已开启</button></header>
+                            <div class="effect-sliders">
+                                <label for="tyndallStrengthControl"><span>散射强度</span><output id="tyndallStrengthValue">0.82</output></label>
+                                <input id="tyndallStrengthControl" type="range" min="0" max="1.5" value="0.82" step="0.02">
+                                <label for="beamSpreadControl"><span>光束展开</span><output id="beamSpreadValue">0.34</output></label>
+                                <input id="beamSpreadControl" type="range" min="0.08" max="0.65" value="0.34" step="0.01">
+                            </div>
+                        </section>
+                    </div>
+                </details>
+            </div>
+
+            <p class="stage-caption"><span>MINERAL MEMORY / 04</span>风只移动可以离开壁面的部分。</p>
+        </section>
+
+        <section class="quality-notes" aria-labelledby="qualityTitle">
+            <header><p>QUALITY SAMPLE</p><h2 id="qualityTitle">当前只验收这四件事</h2></header>
+            <dl>
+                <div><dt>带</dt><dd>人物与月轮保持锚定，飘带依张力和风向分段响应。</dd></div>
+                <div><dt>尘</dt><dd>远、中、近三层矿物尘拥有不同速度、粒径与景深。</dd></div>
+                <div><dt>光</dt><dd>月轮光通过沙尘介质显形，并被飞天主体自然遮挡。</dd></div>
+                <div><dt>风</dt><dd>八方向风场同时驱动飘带、尘埃和短促阵风。</dd></div>
+            </dl>
+        </section>
+    </main>
+
+    <script src="/js/dunhuang_motion_lab.js?v=1" defer></script>
+</body>
+</html>

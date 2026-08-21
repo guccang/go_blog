@@ -128,6 +128,10 @@
     ];
 
     var seriesNames = Object.fromEntries(series.map(function (item) { return [item[0], item[1]]; }));
+    var motionLabs = {
+        '001': { url: '/tools/natural-motion-lab', label: '青瓷雨实验室' },
+        '004': { url: '/tools/dunhuang-motion-lab', label: '敦煌暮色实验室' }
+    };
     var themes = themeRows.map(function (row, index) {
         return {
             id: row[0],
@@ -138,13 +142,15 @@
             description: row[5],
             sheet: Math.floor(index / 10) + 1,
             cell: index % 10,
-            drift: ((index * 7) % 9) - 4
+            drift: ((index * 7) % 9) - 4,
+            lab: motionLabs[row[0]] || null
         };
     });
 
     var gallery = document.getElementById('theme-gallery');
     var filterRoot = document.getElementById('theme-filters');
     var searchInput = document.getElementById('theme-search');
+    var labFilterRoot = document.getElementById('lab-filters');
     var countNode = document.getElementById('visible-count');
     var activeSeriesNode = document.getElementById('active-series');
     var emptyNode = document.getElementById('theme-empty');
@@ -152,6 +158,7 @@
     var dialogArt = document.getElementById('dialog-art');
     var toast = document.getElementById('atlas-toast');
     var activeSeries = 'all';
+    var activeLabFilter = 'all';
     var toastTimer;
 
     var implementedThemes = {
@@ -184,8 +191,9 @@
         var query = searchInput.value.trim().toLocaleLowerCase('zh-CN');
         return themes.filter(function (theme) {
             var seriesMatch = activeSeries === 'all' || theme.series === activeSeries;
+            var labMatch = activeLabFilter === 'all' || Boolean(theme.lab);
             var text = [theme.name, theme.en, seriesNames[theme.series], theme.description].join(' ').toLocaleLowerCase('zh-CN');
-            return seriesMatch && (!query || text.includes(query));
+            return seriesMatch && labMatch && (!query || text.includes(query));
         });
     }
 
@@ -195,8 +203,9 @@
             var dots = theme.colors.map(function (color) {
                 return '<i style="background:' + color + '" title="' + color + '"></i>';
             }).join('');
+            var labMark = theme.lab ? '<span class="specimen-lab-mark">MOTION LAB</span>' : '';
             return '<article class="specimen-card" role="button" tabindex="0" data-theme-id="' + theme.id + '" aria-label="查看 ' + theme.name + ' 配色详情" style="--drift:' + theme.drift + 'px">' +
-                '<div class="specimen-art" aria-hidden="true">' + symbolMarkup(theme) + '</div>' +
+                '<div class="specimen-art" aria-hidden="true">' + labMark + symbolMarkup(theme) + '</div>' +
                 '<div class="specimen-meta">' +
                     '<div class="specimen-heading"><span>' + theme.id + '</span><div><h2>' + theme.name + '</h2><p>' + theme.en + '</p></div></div>' +
                     '<div class="specimen-palette" aria-hidden="true">' + dots + '</div>' +
@@ -206,7 +215,8 @@
         }).join('');
 
         countNode.textContent = String(visibleThemes.length).padStart(2, '0');
-        activeSeriesNode.textContent = activeSeries === 'all' ? '全部馆藏' : seriesNames[activeSeries];
+        var seriesLabel = activeSeries === 'all' ? '全部馆藏' : seriesNames[activeSeries];
+        activeSeriesNode.textContent = activeLabFilter === 'lab' ? seriesLabel + ' · 动效实验室' : seriesLabel;
         emptyNode.hidden = visibleThemes.length !== 0;
     }
 
@@ -214,6 +224,19 @@
         filterRoot.innerHTML = series.map(function (item) {
             var pressed = item[0] === activeSeries;
             return '<button class="atlas-filter' + (pressed ? ' is-active' : '') + '" type="button" data-series="' + item[0] + '" aria-pressed="' + pressed + '">' + item[1] + '</button>';
+        }).join('');
+    }
+
+    function renderLabFilters() {
+        var labCount = themes.filter(function (theme) { return Boolean(theme.lab); }).length;
+        var filters = [
+            ['all', '全部主题', themes.length],
+            ['lab', '有实验室', labCount]
+        ];
+        labFilterRoot.innerHTML = filters.map(function (item) {
+            var pressed = item[0] === activeLabFilter;
+            return '<button class="atlas-lab-filter' + (pressed ? ' is-active' : '') + '" type="button" data-lab-filter="' + item[0] + '" aria-pressed="' + pressed + '">' +
+                '<span>' + item[1] + '</span><strong>' + String(item[2]).padStart(2, '0') + '</strong></button>';
         }).join('');
     }
 
@@ -261,9 +284,13 @@
             return '<button type="button" data-color="' + color + '" style="--swatch:' + color + '"><span>0' + (index + 1) + '</span><strong>' + color + '</strong></button>';
         }).join('');
         var applyButton = document.getElementById('dialog-apply');
+        var labLink = document.getElementById('dialog-lab');
         var themeKey = implementedThemes[theme.id];
         applyButton.hidden = !themeKey;
         applyButton.dataset.themeKey = themeKey || '';
+        labLink.hidden = !theme.lab;
+        labLink.href = theme.lab ? theme.lab.url : '#';
+        labLink.textContent = theme.lab ? '进入' + theme.lab.label + ' ↗' : '';
         dialog.showModal();
     }
 
@@ -272,6 +299,14 @@
         if (!button) return;
         activeSeries = button.dataset.series;
         renderFilters();
+        renderGallery();
+    });
+
+    labFilterRoot.addEventListener('click', function (event) {
+        var button = event.target.closest('[data-lab-filter]');
+        if (!button) return;
+        activeLabFilter = button.dataset.labFilter;
+        renderLabFilters();
         renderGallery();
     });
 
@@ -324,5 +359,6 @@
     });
 
     renderFilters();
+    renderLabFilters();
     renderGallery();
 })();

@@ -43,6 +43,7 @@ var view = struct {
 	PageTools              func(h.ResponseWriter)
 	PageVisualThemes       func(h.ResponseWriter)
 	PageNaturalMotionLab   func(h.ResponseWriter)
+	PageDunhuangMotionLab  func(h.ResponseWriter)
 }{
 	PageBookDetail:         PageBookDetail,
 	PageDiaryPasswordError: PageDiaryPasswordError,
@@ -66,6 +67,7 @@ var view = struct {
 	PageTools:              PageTools,
 	PageVisualThemes:       PageVisualThemes,
 	PageNaturalMotionLab:   PageNaturalMotionLab,
+	PageDunhuangMotionLab:  PageDunhuangMotionLab,
 }
 
 func templateInfo() {
@@ -1040,6 +1042,22 @@ func PageNaturalMotionLab(w h.ResponseWriter) {
 	if err := tmpl.Execute(w, nil); err != nil {
 		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to render natural motion lab template", h.StatusInternalServerError)
+	}
+}
+
+// PageDunhuangMotionLab 渲染独立的 004 敦煌暮色质量样板。
+func PageDunhuangMotionLab(w h.ResponseWriter) {
+	tempDir := config.GetHttpTemplatePath()
+	tmpl, err := t.ParseFiles(filepath.Join(tempDir, "dunhuang_motion_lab.template"))
+	if err != nil {
+		log.Debug(log.ModuleView, err.Error())
+		h.Error(w, "Failed to parse Dunhuang motion lab template", h.StatusInternalServerError)
+		return
+	}
+
+	if err := tmpl.Execute(w, nil); err != nil {
+		log.Debug(log.ModuleView, err.Error())
+		h.Error(w, "Failed to render Dunhuang motion lab template", h.StatusInternalServerError)
 	}
 }
 

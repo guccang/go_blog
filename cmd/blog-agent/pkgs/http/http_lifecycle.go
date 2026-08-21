@@ -91,3 +91,13 @@ func HandleNaturalMotionLab(w h.ResponseWriter, r *h.Request) {
 	emitUsageHook(r, getAccountFromRequest(r), blog.HookPageOpened, "natural_motion_lab", "page", "natural_motion_lab", "青瓷雨动效实验室", "", nil, map[string]any{"status": "success"})
 	view.PageNaturalMotionLab(w)
 }
+
+func HandleDunhuangMotionLab(w h.ResponseWriter, r *h.Request) {
+	LogRemoteAddr("HandleDunhuangMotionLab", r)
+	if checkLogin(r) != 0 {
+		h.Redirect(w, r, "/index", h.StatusFound)
+		return
+	}
+	emitUsageHook(r, getAccountFromRequest(r), blog.HookPageOpened, "dunhuang_motion_lab", "page", "dunhuang_motion_lab", "敦煌暮色动效实验室", "", nil, map[string]any{"status": "success"})
+	view.PageDunhuangMotionLab(w)
+}
