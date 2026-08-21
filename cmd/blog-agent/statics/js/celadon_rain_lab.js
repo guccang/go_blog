@@ -18,6 +18,15 @@
     var windDirectionDetail = document.getElementById('windDirectionDetail');
     var windDirectionButtons = Array.prototype.slice.call(document.querySelectorAll('[data-wind-direction]'));
     var lightInstrument = document.getElementById('lightInstrument');
+    var lightSourceValue = document.getElementById('lightSourceValue');
+    var lightSourceDetail = document.getElementById('lightSourceDetail');
+    var lightSourceButtons = Array.prototype.slice.call(document.querySelectorAll('[data-light-source]'));
+    var lightPositionControl = document.getElementById('lightPositionControl');
+    var lightPositionValue = document.getElementById('lightPositionValue');
+    var lightAngleControl = document.getElementById('lightAngleControl');
+    var lightAngleValue = document.getElementById('lightAngleValue');
+    var lightRangeControl = document.getElementById('lightRangeControl');
+    var lightRangeValue = document.getElementById('lightRangeValue');
     var breathingToggle = document.getElementById('breathingToggle');
     var breathStrengthControl = document.getElementById('breathStrengthControl');
     var breathStrengthValue = document.getElementById('breathStrengthValue');
@@ -26,8 +35,8 @@
     var tyndallToggle = document.getElementById('tyndallToggle');
     var tyndallStrengthControl = document.getElementById('tyndallStrengthControl');
     var tyndallStrengthValue = document.getElementById('tyndallStrengthValue');
-    var tyndallAngleControl = document.getElementById('tyndallAngleControl');
-    var tyndallAngleValue = document.getElementById('tyndallAngleValue');
+    var mediumDensityControl = document.getElementById('mediumDensityControl');
+    var mediumDensityValue = document.getElementById('mediumDensityValue');
     var impactButton = document.getElementById('impactButton');
     var pauseButton = document.getElementById('pauseButton');
     var resetButton = document.getElementById('resetButton');
@@ -43,6 +52,13 @@
         northwest: { angle: 315, label: '西北风 NW → SE', detail: '来自西北，向东南方向流动。' }
     };
 
+    var lightSources = {
+        point: { uniform: 0, label: '点光源', detail: '一点向四周自然衰减，适合观察局部高光与雾中光晕。' },
+        spot: { uniform: 1, label: '聚光源', detail: '从一点向指定方向展开柔和光锥，边缘不会形成硬切线。' },
+        directional: { uniform: 2, label: '平行光', detail: '远距离光源形成近似平行的入射光，适合观察雨雾散射。' },
+        area: { uniform: 3, label: '面光源', detail: '较大面积发光形成宽阔柔光，阴影和高光更加克制。' }
+    };
+
     function normalizeWindAngle(angle) {
         return ((Number(angle) % 360) + 360) % 360;
     }
@@ -56,7 +72,7 @@
         return [-Math.sin(radians), -Math.cos(radians)];
     }
 
-    function formatTyndallAngle(angle) {
+    function formatLightAngle(angle) {
         var numericAngle = Number(angle);
         if (numericAngle < 0) return '右上 ' + Math.abs(numericAngle).toFixed(0) + '°';
         if (numericAngle > 0) return '左上 ' + numericAngle.toFixed(0) + '°';
@@ -146,7 +162,11 @@
         'uniform float u_breath_strength;',
         'uniform float u_breath_period;',
         'uniform float u_tyndall_strength;',
-        'uniform float u_tyndall_angle;',
+        'uniform float u_medium_density;',
+        'uniform int u_light_type;',
+        'uniform vec2 u_light_position;',
+        'uniform float u_light_angle;',
+        'uniform float u_light_range;',
         'uniform float u_waterline;',
         'uniform vec4 u_impacts[12];',
         'uniform int u_impact_count;',
@@ -187,10 +207,13 @@
         '}',
         '',
         'float breathing_light() {',
-        '    float phase_value = u_time * 6.28318530718 / max(u_breath_period, 1.0);',
-        '    float primary_wave = sin(phase_value - 0.35) * 0.74;',
-        '    float secondary_wave = sin(phase_value * 0.47 + 1.6) * 0.26;',
-        '    return max(0.68, 1.0 + u_breath_strength * (primary_wave + secondary_wave));',
+        '    float cycle_value = fract(u_time / max(u_breath_period, 1.0));',
+        '    float inhale_value = smoothstep(0.0, 0.38, cycle_value);',
+        '    float exhale_value = 1.0 - smoothstep(0.38, 1.0, cycle_value);',
+        '    float envelope_value = smoothstep(0.0, 1.0, min(inhale_value, exhale_value));',
+        '    float organic_value = sin(u_time * 1.71 + 0.6) * 0.035;',
+        '    float energy_value = mix(-0.45, 1.0, envelope_value) + organic_value;',
+        '    return max(0.55, 1.0 + u_breath_strength * energy_value);',
         '}',
         '',
         'vec2 wind_field(vec2 uv_value, float depth_value) {',
@@ -247,58 +270,93 @@
         '    return texture_value * inside_value;',
         '}',
         '',
+        'vec2 light_direction() {',
+        '    return normalize(vec2(sin(u_light_angle), -cos(u_light_angle)));',
+        '}',
+        '',
+        'float direct_light_field(vec2 uv_value, float aspect_value) {',
+        '    vec2 relative_value = uv_value - u_light_position;',
+        '    relative_value.x *= aspect_value;',
+        '    vec2 direction_value = light_direction();',
+        '    vec2 perpendicular_value = vec2(-direction_value.y, direction_value.x);',
+        '    float range_value = max(u_light_range, 0.05);',
+        '    float distance_value = length(relative_value);',
+        '',
+        '    if (u_light_type == 0) {',
+        '        float radial_value = 1.0 - smoothstep(range_value * 0.08, range_value, distance_value);',
+        '        float core_value = exp(-distance_value * distance_value / max(range_value * range_value * 0.045, 0.004));',
+        '        return clamp(radial_value * 0.62 + core_value * 0.78, 0.0, 1.35);',
+        '    }',
+        '',
+        '    float forward_value = dot(relative_value, direction_value);',
+        '    float lateral_value = abs(dot(relative_value, perpendicular_value));',
+        '    if (u_light_type == 1) {',
+        '        float cone_width = 0.035 + max(forward_value, 0.0) * mix(0.18, 0.48, clamp(range_value / 1.2, 0.0, 1.0));',
+        '        float cone_value = 1.0 - smoothstep(cone_width * 0.56, cone_width, lateral_value);',
+        '        float forward_fade = smoothstep(0.005, 0.08, forward_value);',
+        '        forward_fade *= 1.0 - smoothstep(range_value * 0.7, range_value * 1.45, forward_value);',
+        '        return clamp(cone_value * forward_fade, 0.0, 1.0);',
+        '    }',
+        '',
+        '    if (u_light_type == 2) {',
+        '        float lane_value = 1.0 - smoothstep(range_value * 0.72, range_value * 1.15, lateral_value);',
+        '        float entry_value = smoothstep(-0.24, 0.04, forward_value);',
+        '        return mix(0.46, 1.0, lane_value) * entry_value;',
+        '    }',
+        '',
+        '    vec2 area_axes = vec2(dot(relative_value, perpendicular_value) * 0.62, dot(relative_value, direction_value) * 0.85);',
+        '    float area_value = 1.0 - smoothstep(range_value * 0.22, range_value * 1.35, length(area_axes));',
+        '    return mix(0.28, 1.0, area_value);',
+        '}',
+        '',
+        'vec2 path_to_light(vec2 uv_value) {',
+        '    if (u_light_type == 2) return -light_direction() * mix(0.58, 1.08, clamp(u_light_range, 0.0, 1.0));',
+        '    return u_light_position - uv_value;',
+        '}',
+        '',
         'float tyndall_scattering(vec2 uv_value, float aspect_value, float vessel_angle) {',
-        '    vec2 light_direction = normalize(vec2(sin(u_tyndall_angle), -cos(u_tyndall_angle)));',
-        '    vec2 perpendicular_direction = vec2(-light_direction.y, light_direction.x);',
-        '    vec2 light_origin = vec2(clamp(0.5 - sin(u_tyndall_angle) * 0.58, 0.12, 0.88), 1.08);',
-        '    vec2 relative_value = uv_value - light_origin;',
-        '    float forward_distance = max(dot(relative_value, light_direction), 0.0);',
-        '    float lateral_distance = abs(dot(relative_value, perpendicular_direction));',
-        '    float cone_width = 0.035 + forward_distance * 0.34;',
-        '    float cone_value = 1.0 - smoothstep(cone_width * 0.58, cone_width, lateral_distance);',
-        '    cone_value *= smoothstep(0.015, 0.12, forward_distance);',
-        '    cone_value *= 1.0 - smoothstep(0.78, 1.18, forward_distance);',
-        '',
-        '    float ray_coordinate = dot(relative_value, perpendicular_direction) / max(forward_distance, 0.08);',
-        '    float broad_shafts = 0.5 + 0.5 * sin(ray_coordinate * 56.0 + 1.3);',
-        '    float fine_shafts = 0.5 + 0.5 * sin(ray_coordinate * 113.0 - 0.8);',
-        '    float shaft_pattern = pow(clamp(broad_shafts * 0.72 + fine_shafts * 0.28, 0.0, 1.0), 2.2);',
-        '',
-        '    vec2 fog_drift = u_wind_direction * u_time * 0.008;',
-        '    vec2 path_to_light = light_origin - uv_value;',
+        '    vec2 fog_drift = u_wind_direction * u_time * 0.009;',
+        '    vec2 light_path = path_to_light(uv_value);',
+        '    float path_length = max(length(vec2(light_path.x * aspect_value, light_path.y)), 0.05);',
         '    float volume_density = 0.0;',
         '    for (int volume_index = 0; volume_index < 8; volume_index++) {',
         '        float path_ratio = (float(volume_index) + 0.5) / 8.0;',
-        '        vec2 sample_point = uv_value + path_to_light * path_ratio;',
-        '        float coarse_density = value_noise(sample_point * vec2(5.2, 8.6) + fog_drift + vec2(1.7, u_time * 0.012));',
-        '        float fine_density = value_noise(sample_point * vec2(11.0, 6.0) - fog_drift * 1.4 + vec2(4.3));',
-        '        float local_density = smoothstep(0.18, 0.86, mix(coarse_density, fine_density, 0.28));',
-        '        volume_density += local_density * (1.0 - path_ratio * 0.38);',
+        '        vec2 sample_point = uv_value + light_path * path_ratio;',
+        '        float coarse_density = value_noise(sample_point * vec2(4.7, 7.8) + fog_drift + vec2(1.7, u_time * 0.011));',
+        '        float fine_density = value_noise(sample_point * vec2(10.2, 6.4) - fog_drift * 1.3 + vec2(4.3));',
+        '        float local_density = mix(coarse_density, fine_density, 0.32);',
+        '        local_density = mix(0.38, 1.22, smoothstep(0.12, 0.9, local_density));',
+        '        float source_energy = mix(0.42, 1.18, clamp(direct_light_field(sample_point, aspect_value), 0.0, 1.0));',
+        '        float transmittance = exp(-path_ratio * path_length * u_medium_density * 0.72);',
+        '        volume_density += local_density * source_energy * transmittance;',
         '    }',
-        '    volume_density /= 8.0;',
+        '    volume_density = volume_density / 8.0 * u_medium_density;',
         '',
+        '    vec2 toward_light = light_path / max(length(light_path), 0.0001);',
         '    float vessel_shadow = 0.0;',
-        '    for (int shadow_index = 0; shadow_index < 6; shadow_index++) {',
-        '        float shadow_distance = 0.025 + float(shadow_index) * 0.036;',
-        '        vec2 shadow_point = uv_value - light_direction * shadow_distance;',
+        '    for (int shadow_index = 0; shadow_index < 4; shadow_index++) {',
+        '        float shadow_distance = 0.025 + float(shadow_index) * 0.045;',
+        '        vec2 shadow_point = uv_value + toward_light * shadow_distance;',
         '        float shadow_alpha = celadon_sample(shadow_point, aspect_value, vessel_angle, vec2(0.0)).a;',
-        '        vessel_shadow = max(vessel_shadow, shadow_alpha * (1.0 - float(shadow_index) * 0.11));',
+        '        vessel_shadow = max(vessel_shadow, shadow_alpha * (1.0 - float(shadow_index) * 0.16));',
         '    }',
         '',
-        '    float air_above_water = smoothstep(u_waterline + 0.025, u_waterline + 0.16, uv_value.y);',
-        '    float particle_density = mix(0.62, 1.18, clamp(u_rain / 1.8, 0.0, 1.0));',
-        '    return cone_value * mix(0.28, 1.0, shaft_pattern) * volume_density *',
-        '        (1.0 - vessel_shadow * 0.82) * air_above_water * particle_density;',
+        '    float field_value = clamp(direct_light_field(uv_value, aspect_value), 0.0, 1.0);',
+        '    float source_geometry = mix(0.2, 1.0, field_value);',
+        '    float air_above_water = smoothstep(u_waterline + 0.005, u_waterline + 0.09, uv_value.y);',
+        '    float rain_density = mix(0.82, 1.32, clamp(u_rain / 1.8, 0.0, 1.0));',
+        '    return volume_density * source_geometry * (1.0 - vessel_shadow * 0.5) * air_above_water * rain_density;',
         '}',
         '',
-        'vec3 paper_environment(vec2 uv_value, float scene_light) {',
+        'vec3 paper_environment(vec2 uv_value, float ambient_light, float field_value) {',
         '    vec3 paper_color = vec3(0.957, 0.933, 0.875);',
         '    vec3 mist_color = vec3(0.906, 0.937, 0.918);',
         '    float vertical_mist = smoothstep(0.04, 0.96, uv_value.y);',
         '    float cloud_value = fbm(uv_value * vec2(2.4, 1.5) + vec2(u_time * 0.018, 1.7));',
-        '    float light_pool = exp(-distance(uv_value, vec2(0.73, 0.78)) * 2.8);',
         '    vec3 environment_color = mix(paper_color, mist_color, vertical_mist * 0.72 + cloud_value * 0.1);',
-        '    environment_color *= mix(0.91, 1.075, light_pool * clamp(scene_light, 0.0, 1.5));',
+        '    float received_light = clamp(ambient_light * mix(0.46, 1.0, field_value), 0.0, 1.6);',
+        '    environment_color *= mix(0.9, 1.1, received_light);',
+        '    environment_color += vec3(0.82, 0.9, 0.76) * field_value * ambient_light * 0.035;',
         '    environment_color *= 0.97 + (cloud_value - 0.5) * 0.055;',
         '    return environment_color;',
         '}',
@@ -331,21 +389,19 @@
         '    float horizontal_wind = u_wind_direction.x;',
         '    float vessel_angle = slow_gust * u_wind * (0.28 + abs(horizontal_wind) * 0.72);',
         '    vessel_angle += horizontal_wind * u_wind * 0.012;',
-        '    float scene_light = u_light * breathing_light();',
-        '    vec3 color_value = paper_environment(uv_value, scene_light);',
+        '    float breath_value = breathing_light();',
+        '    float ambient_light = u_light * mix(1.0, breath_value, 0.38);',
+        '    float direct_light = u_light * breath_value;',
+        '    float field_value = direct_light_field(uv_value, aspect_value);',
+        '    vec3 color_value = paper_environment(uv_value, ambient_light, field_value);',
         '    vec4 vessel_value = celadon_sample(uv_value, aspect_value, vessel_angle, vec2(0.0));',
-        '    float tyndall_value = 0.0;',
-        '    if (u_tyndall_strength > 0.001) {',
-        '        tyndall_value = tyndall_scattering(uv_value, aspect_value, vessel_angle);',
-        '        vec3 scattered_light = vec3(0.86, 0.94, 0.8) * tyndall_value * u_tyndall_strength;',
-        '        color_value += scattered_light * mix(0.72, 1.08, clamp(scene_light, 0.0, 1.35));',
-        '    }',
         '',
         '    float thread_x = 0.51 + sin(vessel_angle) * 0.035;',
         '    float thread_mask = (1.0 - smoothstep(0.00035, 0.0012, abs(uv_value.x - thread_x))) * smoothstep(0.77, 0.82, uv_value.y);',
         '    color_value = mix(color_value, vec3(0.17, 0.23, 0.22), thread_mask * 0.72);',
         '',
-        '    vec3 lit_vessel = vessel_value.rgb * mix(0.82, 1.12, clamp(scene_light / 1.35, 0.0, 1.0));',
+        '    float vessel_light = clamp(ambient_light * 0.32 + direct_light * field_value * 0.78, 0.0, 1.7);',
+        '    vec3 lit_vessel = vessel_value.rgb * mix(0.76, 1.25, vessel_light / 1.7);',
         '    color_value = mix(color_value, lit_vessel, vessel_value.a);',
         '',
         '    if (uv_value.y < u_waterline) {',
@@ -362,7 +418,9 @@
         '        vec4 reflection_value = celadon_sample(reflected_uv, aspect_value, -vessel_angle, refraction_shift);',
         '        vec3 shallow_color = vec3(0.51, 0.68, 0.62);',
         '        vec3 deep_color = vec3(0.11, 0.25, 0.23);',
-        '        vec3 refracted_environment = paper_environment(uv_value + refraction_shift * 0.45, scene_light);',
+        '        vec2 refracted_uv = uv_value + refraction_shift * 0.45;',
+        '        float water_light_field = direct_light_field(refracted_uv, aspect_value);',
+        '        vec3 refracted_environment = paper_environment(refracted_uv, ambient_light, water_light_field);',
         '        vec3 water_color = mix(shallow_color, deep_color, pow(water_depth, 0.72));',
         '        water_color = mix(water_color, refracted_environment, 0.16 + (1.0 - water_depth) * 0.16);',
         '        float caustic_value = pow(0.5 + 0.5 * sin((uv_value.x + wave_height * 0.08) * 185.0 + u_time * 0.55), 12.0);',
@@ -371,7 +429,7 @@
         '        water_color = mix(water_color, reflection_value.rgb * vec3(0.64, 0.79, 0.74), reflection_fade);',
         '        float surface_glint = exp(-abs(uv_value.y - u_waterline) * 420.0);',
         '        surface_glint += clamp(abs(wave_normal.x) + abs(wave_normal.y), 0.0, 1.0) * (1.0 - water_depth) * 1.8;',
-        '        water_color += vec3(0.72, 0.84, 0.79) * surface_glint * 0.24 * scene_light;',
+        '        water_color += vec3(0.72, 0.84, 0.79) * surface_glint * 0.24 * direct_light * mix(0.38, 1.15, water_light_field);',
         '        color_value = water_color;',
         '    }',
         '',
@@ -387,8 +445,16 @@
         '    color_value = mix(color_value, rain_far_color, far_rain.y * 0.12 + far_rain.x * 0.16);',
         '    color_value = mix(color_value, rain_mid_color, middle_rain.y * 0.12 + middle_rain.x * 0.36);',
         '    color_value = mix(color_value, rain_near_color, near_rain.y * 0.19 + near_rain.x * 0.5);',
+        '',
+        '    float tyndall_value = 0.0;',
+        '    if (u_tyndall_strength > 0.001) {',
+        '        tyndall_value = tyndall_scattering(uv_value, aspect_value, vessel_angle);',
+        '        float surface_visibility = 1.0 - vessel_value.a * 0.88;',
+        '        vec3 scattered_light = vec3(0.84, 0.94, 0.8) * tyndall_value * u_tyndall_strength * direct_light;',
+        '        color_value += scattered_light * surface_visibility * 0.58;',
+        '    }',
         '    float rain_in_light = far_rain.x * 0.16 + middle_rain.x * 0.3 + near_rain.x * 0.44;',
-        '    color_value += vec3(0.82, 0.93, 0.84) * rain_in_light * tyndall_value * u_tyndall_strength * 0.34;',
+        '    color_value += vec3(0.82, 0.93, 0.84) * rain_in_light * tyndall_value * u_tyndall_strength * direct_light * 0.42;',
         '',
         '    float splash_value = 0.0;',
         '    for (int impact_index = 0; impact_index < 12; impact_index++) {',
@@ -477,12 +543,16 @@
             rain: 1,
             light: 1,
             breathingEnabled: true,
-            breathStrength: 0.12,
-            breathPeriod: 8,
+            breathStrength: 0.28,
+            breathPeriod: 6.5,
             tyndallEnabled: true,
-            tyndallStrength: 0.55,
-            tyndallAngle: -28
+            tyndallStrength: 0.75,
+            mediumDensity: 0.72,
+            lightPosition: 0.68,
+            lightAngle: -28,
+            lightRange: 0.62
         };
+        this.lightSourceKey = 'point';
         this.windDirectionKey = 'west';
         this.windAngle = 270;
         this.targetWindAngle = 270;
@@ -509,7 +579,8 @@
         this.renderUniforms = uniformMap(gl, this.renderProgram, [
             'u_wave_state', 'u_celadon_atlas', 'u_resolution', 'u_wave_texel', 'u_pointer',
             'u_time', 'u_wind', 'u_wind_direction', 'u_rain', 'u_light',
-            'u_breath_strength', 'u_breath_period', 'u_tyndall_strength', 'u_tyndall_angle', 'u_waterline',
+            'u_breath_strength', 'u_breath_period', 'u_tyndall_strength', 'u_medium_density',
+            'u_light_type', 'u_light_position', 'u_light_angle', 'u_light_range', 'u_waterline',
             'u_impacts', 'u_impact_count'
         ]);
         this.createSimulationTargets();
@@ -603,13 +674,22 @@
             { input: breathStrengthControl, output: breathStrengthValue, key: 'breathStrength', format: function (value) { return value.toFixed(2); } },
             { input: breathPeriodControl, output: breathPeriodValue, key: 'breathPeriod', format: function (value) { return value.toFixed(1) + ' s'; } },
             { input: tyndallStrengthControl, output: tyndallStrengthValue, key: 'tyndallStrength', format: function (value) { return value.toFixed(2); } },
-            { input: tyndallAngleControl, output: tyndallAngleValue, key: 'tyndallAngle', format: formatTyndallAngle }
+            { input: mediumDensityControl, output: mediumDensityValue, key: 'mediumDensity', format: function (value) { return value.toFixed(2); } },
+            { input: lightPositionControl, output: lightPositionValue, key: 'lightPosition', format: function (value) { return Math.round(value * 100) + '%'; } },
+            { input: lightAngleControl, output: lightAngleValue, key: 'lightAngle', format: formatLightAngle },
+            { input: lightRangeControl, output: lightRangeValue, key: 'lightRange', format: function (value) { return value.toFixed(2); } }
         ].forEach(function (control) {
             control.input.addEventListener('input', function () {
                 var value = Number(control.input.value);
                 self.settings[control.key] = value;
                 control.output.value = control.format(value);
                 if (self.paused) self.render();
+            });
+        });
+
+        lightSourceButtons.forEach(function (button) {
+            button.addEventListener('click', function () {
+                self.setLightSource(button.dataset.lightSource);
             });
         });
 
@@ -653,7 +733,25 @@
         });
         this.syncPauseButton();
         this.syncLightControls();
+        this.setLightSource(this.lightSourceKey);
         this.setWindDirection(this.windDirectionKey, true);
+    };
+
+    CeladonRainLab.prototype.setLightSource = function (sourceKey) {
+        var source = lightSources[sourceKey];
+        if (!source) return;
+        this.lightSourceKey = sourceKey;
+        lightInstrument.dataset.source = sourceKey;
+        lightSourceValue.value = source.label;
+        lightSourceDetail.textContent = source.detail;
+        lightSourceButtons.forEach(function (button) {
+            button.setAttribute('aria-pressed', String(button.dataset.lightSource === sourceKey));
+        });
+        if (this.paused && this.assetTexture) this.render();
+    };
+
+    CeladonRainLab.prototype.lightSource = function () {
+        return lightSources[this.lightSourceKey];
     };
 
     CeladonRainLab.prototype.setWindAngle = function (angle, immediate) {
@@ -707,10 +805,10 @@
     };
 
     CeladonRainLab.prototype.syncLightControls = function () {
-        breathingToggle.setAttribute('aria-pressed', String(this.settings.breathingEnabled));
-        breathingToggle.textContent = this.settings.breathingEnabled ? '开启' : '关闭';
-        tyndallToggle.setAttribute('aria-pressed', String(this.settings.tyndallEnabled));
-        tyndallToggle.textContent = this.settings.tyndallEnabled ? '开启' : '关闭';
+        breathingToggle.setAttribute('aria-checked', String(this.settings.breathingEnabled));
+        breathingToggle.textContent = this.settings.breathingEnabled ? '已开启' : '已关闭';
+        tyndallToggle.setAttribute('aria-checked', String(this.settings.tyndallEnabled));
+        tyndallToggle.textContent = this.settings.tyndallEnabled ? '已开启' : '已关闭';
         lightInstrument.dataset.breathing = this.settings.breathingEnabled ? 'on' : 'off';
         lightInstrument.dataset.tyndall = this.settings.tyndallEnabled ? 'on' : 'off';
     };
@@ -834,7 +932,11 @@
         gl.uniform1f(uniforms.u_breath_strength, this.settings.breathingEnabled ? this.settings.breathStrength : 0);
         gl.uniform1f(uniforms.u_breath_period, this.settings.breathPeriod);
         gl.uniform1f(uniforms.u_tyndall_strength, this.settings.tyndallEnabled ? this.settings.tyndallStrength : 0);
-        gl.uniform1f(uniforms.u_tyndall_angle, this.settings.tyndallAngle * Math.PI / 180);
+        gl.uniform1f(uniforms.u_medium_density, this.settings.mediumDensity);
+        gl.uniform1i(uniforms.u_light_type, this.lightSource().uniform);
+        gl.uniform2f(uniforms.u_light_position, this.settings.lightPosition, 0.84);
+        gl.uniform1f(uniforms.u_light_angle, this.settings.lightAngle * Math.PI / 180);
+        gl.uniform1f(uniforms.u_light_range, this.settings.lightRange);
         gl.uniform1f(uniforms.u_waterline, this.waterline);
         gl.uniform4fv(uniforms.u_impacts, impactData);
         gl.uniform1i(uniforms.u_impact_count, Math.min(this.impacts.length, 12));
@@ -862,27 +964,37 @@
             rain: 1,
             light: 1,
             breathingEnabled: true,
-            breathStrength: 0.12,
-            breathPeriod: 8,
+            breathStrength: 0.28,
+            breathPeriod: 6.5,
             tyndallEnabled: true,
-            tyndallStrength: 0.55,
-            tyndallAngle: -28
+            tyndallStrength: 0.75,
+            mediumDensity: 0.72,
+            lightPosition: 0.68,
+            lightAngle: -28,
+            lightRange: 0.62
         };
+        this.setLightSource('point');
         this.setWindDirection('west', true);
         windControl.value = '1';
         rainControl.value = '1';
         lightControl.value = '1';
-        breathStrengthControl.value = '0.12';
-        breathPeriodControl.value = '8';
-        tyndallStrengthControl.value = '0.55';
-        tyndallAngleControl.value = '-28';
+        breathStrengthControl.value = '0.28';
+        breathPeriodControl.value = '6.5';
+        tyndallStrengthControl.value = '0.75';
+        mediumDensityControl.value = '0.72';
+        lightPositionControl.value = '0.68';
+        lightAngleControl.value = '-28';
+        lightRangeControl.value = '0.62';
         windValue.value = '1.00';
         rainValue.value = '1.00';
         lightValue.value = '1.00';
-        breathStrengthValue.value = '0.12';
-        breathPeriodValue.value = '8.0 s';
-        tyndallStrengthValue.value = '0.55';
-        tyndallAngleValue.value = formatTyndallAngle(-28);
+        breathStrengthValue.value = '0.28';
+        breathPeriodValue.value = '6.5 s';
+        tyndallStrengthValue.value = '0.75';
+        mediumDensityValue.value = '0.72';
+        lightPositionValue.value = '68%';
+        lightAngleValue.value = formatLightAngle(-28);
+        lightRangeValue.value = '0.62';
         this.syncLightControls();
         this.pointer = { x: 0.5, y: 0.62, targetX: 0.5, targetY: 0.62 };
         this.impacts = [];

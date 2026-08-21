@@ -7,7 +7,7 @@
     <title>001 青瓷雨 · 自然动效实验室</title>
     <script src="/js/theme.js?v=7"></script>
     <link rel="stylesheet" href="/css/theme.css?v=7">
-    <link rel="stylesheet" href="/css/celadon_rain_lab.css?v=4">
+    <link rel="stylesheet" href="/css/celadon_rain_lab.css?v=5">
 </head>
 <body>
     <a class="skip-link" href="#celadonStage">跳到动效舞台</a>
@@ -125,7 +125,7 @@
             </details>
 
             <details class="light-controls" id="lightInstrument"
-                     data-breathing="on" data-tyndall="on" open>
+                     data-source="point" data-breathing="on" data-tyndall="on" open>
                 <summary>光场观测 <span>OPTICS</span></summary>
                 <div class="light-control-body">
                     <label for="lightControl">
@@ -133,39 +133,75 @@
                     </label>
                     <input id="lightControl" type="range" min="0.45" max="1.35" value="1" step="0.05">
 
+                    <section class="light-source" aria-labelledby="lightSourceTitle">
+                        <header>
+                            <strong id="lightSourceTitle">光源形态</strong>
+                            <output id="lightSourceValue">点光源</output>
+                        </header>
+                        <div class="light-source-picker" role="group" aria-label="选择光源形态">
+                            <button type="button" data-light-source="point" aria-pressed="true">
+                                <strong>点光</strong><small>POINT</small>
+                            </button>
+                            <button type="button" data-light-source="spot" aria-pressed="false">
+                                <strong>聚光</strong><small>SPOT</small>
+                            </button>
+                            <button type="button" data-light-source="directional" aria-pressed="false">
+                                <strong>平行</strong><small>DIRECT</small>
+                            </button>
+                            <button type="button" data-light-source="area" aria-pressed="false">
+                                <strong>面光</strong><small>AREA</small>
+                            </button>
+                        </div>
+                        <p id="lightSourceDetail">一点向四周自然衰减，适合观察局部高光与雾中光晕。</p>
+                        <div class="source-sliders">
+                            <label for="lightPositionControl">
+                                <span>水平位置</span><output id="lightPositionValue" for="lightPositionControl">68%</output>
+                            </label>
+                            <input id="lightPositionControl" type="range" min="0.12" max="0.88" value="0.68" step="0.01">
+                            <label for="lightAngleControl">
+                                <span>入射方向</span><output id="lightAngleValue" for="lightAngleControl">右上 28°</output>
+                            </label>
+                            <input id="lightAngleControl" type="range" min="-60" max="60" value="-28" step="1">
+                            <label for="lightRangeControl">
+                                <span>作用范围</span><output id="lightRangeValue" for="lightRangeControl">0.62</output>
+                            </label>
+                            <input id="lightRangeControl" type="range" min="0.25" max="1.2" value="0.62" step="0.01">
+                        </div>
+                    </section>
+
                     <section class="light-effect light-effect--breathing" aria-labelledby="breathingTitle">
                         <header>
-                            <span><strong id="breathingTitle">呼吸光</strong><small>釉面与水面反射</small></span>
+                            <span><strong id="breathingTitle">呼吸光</strong><small>釉面、反射与散射能量</small></span>
                             <button class="effect-toggle" id="breathingToggle" type="button"
-                                    aria-pressed="true">开启</button>
+                                    role="switch" aria-checked="true">已开启</button>
                         </header>
                         <div class="effect-sliders">
                             <label for="breathStrengthControl">
-                                <span>呼吸幅度</span><output id="breathStrengthValue" for="breathStrengthControl">0.12</output>
+                                <span>呼吸幅度</span><output id="breathStrengthValue" for="breathStrengthControl">0.28</output>
                             </label>
-                            <input id="breathStrengthControl" type="range" min="0" max="0.35" value="0.12" step="0.01">
+                            <input id="breathStrengthControl" type="range" min="0" max="0.65" value="0.28" step="0.01">
                             <label for="breathPeriodControl">
-                                <span>呼吸周期</span><output id="breathPeriodValue" for="breathPeriodControl">8.0 s</output>
+                                <span>呼吸周期</span><output id="breathPeriodValue" for="breathPeriodControl">6.5 s</output>
                             </label>
-                            <input id="breathPeriodControl" type="range" min="4" max="16" value="8" step="0.5">
+                            <input id="breathPeriodControl" type="range" min="3" max="16" value="6.5" step="0.5">
                         </div>
                     </section>
 
                     <section class="light-effect light-effect--tyndall" aria-labelledby="tyndallTitle">
                         <header>
-                            <span><strong id="tyndallTitle">丁达尔光</strong><small>雨雾中的体积散射</small></span>
+                            <span><strong id="tyndallTitle">介质散射</strong><small>丁达尔现象独立于光源</small></span>
                             <button class="effect-toggle" id="tyndallToggle" type="button"
-                                    aria-pressed="true">开启</button>
+                                    role="switch" aria-checked="true">已开启</button>
                         </header>
                         <div class="effect-sliders">
                             <label for="tyndallStrengthControl">
-                                <span>散射强度</span><output id="tyndallStrengthValue" for="tyndallStrengthControl">0.55</output>
+                                <span>散射强度</span><output id="tyndallStrengthValue" for="tyndallStrengthControl">0.75</output>
                             </label>
-                            <input id="tyndallStrengthControl" type="range" min="0" max="1.2" value="0.55" step="0.05">
-                            <label for="tyndallAngleControl">
-                                <span>入射方向</span><output id="tyndallAngleValue" for="tyndallAngleControl">右上 28°</output>
+                            <input id="tyndallStrengthControl" type="range" min="0" max="1.5" value="0.75" step="0.05">
+                            <label for="mediumDensityControl">
+                                <span>介质密度</span><output id="mediumDensityValue" for="mediumDensityControl">0.72</output>
                             </label>
-                            <input id="tyndallAngleControl" type="range" min="-60" max="60" value="-28" step="1">
+                            <input id="mediumDensityControl" type="range" min="0.15" max="1.25" value="0.72" step="0.01">
                         </div>
                     </section>
                 </div>
@@ -181,11 +217,11 @@
                 <div><dt>风</dt><dd>多尺度流场与阵风通过空间传播，而非整幅同步倾斜。</dd></div>
                 <div><dt>雨</dt><dd>远、中、近三层拥有独立的视差、速度、线径和虚化。</dd></div>
                 <div><dt>水</dt><dd>碰撞会生成水冠与传播波，波面法线继续扭曲倒影。</dd></div>
-                <div><dt>光</dt><dd>呼吸只调制真实受光材质；丁达尔光束穿过雨雾，并被青瓷器物柔和遮挡。</dd></div>
+                <div><dt>光</dt><dd>点、聚、平行与面光共享受光模型；丁达尔散射只描述雨雾介质，并被青瓷器物柔和遮挡。</dd></div>
             </dl>
         </section>
     </main>
 
-    <script src="/js/celadon_rain_lab.js?v=4" defer></script>
+    <script src="/js/celadon_rain_lab.js?v=5" defer></script>
 </body>
 </html>

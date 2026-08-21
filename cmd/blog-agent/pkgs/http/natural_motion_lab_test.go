@@ -23,16 +23,19 @@ func TestNaturalMotionLabOwnsCeladonRainSample(t *testing.T) {
 		`data-wind-direction="south"`, `data-wind-direction="southwest"`, `data-wind-direction="west"`,
 		`data-wind-direction="northwest"`, `data-wind-angle="45"`, `data-wind-angle="135"`,
 		`data-wind-angle="225"`, `data-wind-angle="315"`,
-		`id="lightInstrument"`, `data-breathing="on"`, `data-tyndall="on"`,
+		`id="lightInstrument"`, `data-source="point"`, `data-breathing="on"`, `data-tyndall="on"`,
+		`id="lightSourceValue"`, `id="lightSourceDetail"`, `data-light-source="point"`,
+		`data-light-source="spot"`, `data-light-source="directional"`, `data-light-source="area"`,
+		`id="lightPositionControl"`, `id="lightAngleControl"`, `id="lightRangeControl"`,
 		`id="breathingToggle"`, `id="breathStrengthControl"`, `id="breathPeriodControl"`,
-		`id="tyndallToggle"`, `id="tyndallStrengthControl"`, `id="tyndallAngleControl"`,
+		`id="tyndallToggle"`, `id="tyndallStrengthControl"`, `id="mediumDensityControl"`,
 		`id="impactButton"`, `id="pauseButton"`, `id="resetButton"`,
 		`/js/theme.js?v=7`, `/css/theme.css?v=7`,
-		`/css/celadon_rain_lab.css?v=4`, `/js/celadon_rain_lab.js?v=4`,
+		`/css/celadon_rain_lab.css?v=5`, `/js/celadon_rain_lab.js?v=5`,
 		"北风 0°，N → S", "东风 90°，E → W", "南风 180°，S → N", "西风 270°，W → E",
 		"东北风 45°，NE → SW", "东南风 135°，SE → NW",
 		"西南风 225°，SW → NE", "西北风 315°，NW → SE",
-		"呼吸光", "丁达尔光", "雨雾中的体积散射", "右上 28°",
+		"点光源", "聚光", "平行", "面光", "呼吸光", "介质散射", "丁达尔现象独立于光源", "右上 28°", "已开启",
 		"风场", "三层", "水冠", "波面法线",
 	} {
 		if !strings.Contains(page, expected) {
@@ -64,20 +67,34 @@ func TestCeladonRainRendererUsesPhysicalWebGL2Passes(t *testing.T) {
 		`north: { angle: 0`, `northeast: { angle: 45`, `east: { angle: 90`,
 		`southeast: { angle: 135`, `south: { angle: 180`, `southwest: { angle: 225`,
 		`west: { angle: 270`, `northwest: { angle: 315`,
-		`u_breath_strength`, `u_breath_period`, `breathing_light`, `primary_wave`, `secondary_wave`,
-		`u_tyndall_strength`, `u_tyndall_angle`, `tyndall_scattering`, `volume_density`,
-		`volume_index < 8`, `vessel_shadow`, `shadow_index < 6`, `rain_in_light`,
-		`formatTyndallAngle`, `syncLightControls`, `breathingEnabled`, `tyndallEnabled`,
+		`lightSources`, `setLightSource`, `lightSource`,
+		`point: { uniform: 0`, `spot: { uniform: 1`, `directional: { uniform: 2`, `area: { uniform: 3`,
+		`u_light_type`, `u_light_position`, `u_light_angle`, `u_light_range`,
+		`direct_light_field`, `u_light_type == 0`, `u_light_type == 1`, `u_light_type == 2`,
+		`area_axes`, `path_to_light`,
+		`u_breath_strength`, `u_breath_period`, `breathing_light`, `cycle_value`,
+		`inhale_value`, `exhale_value`, `envelope_value`, `direct_light = u_light * breath_value`,
+		`u_tyndall_strength`, `u_medium_density`, `tyndall_scattering`, `volume_density`,
+		`volume_index < 8`, `vessel_shadow`, `shadow_index < 4`, `rain_in_light`,
+		`formatLightAngle`, `syncLightControls`, `aria-checked`, `breathingEnabled`, `tyndallEnabled`,
 		`webglcontextlost`, `prefers-reduced-motion`,
 	} {
 		if !strings.Contains(script, expected) {
 			t.Errorf("青瓷雨渲染器缺少 %q", expected)
 		}
 	}
-	for _, forbidden := range []string{`getContext('2d')`, "Canvas2DRenderer", "registerEffect", "registerPreset", "float active"} {
+	for _, forbidden := range []string{
+		`getContext('2d')`, "Canvas2DRenderer", "registerEffect", "registerPreset", "float active",
+		"broad_shafts", "fine_shafts", "shaft_pattern", "u_tyndall_angle", "formatTyndallAngle",
+	} {
 		if strings.Contains(script, forbidden) {
 			t.Errorf("青瓷雨样板不应包含 %q", forbidden)
 		}
+	}
+	waterComposite := strings.Index(script, `float water_depth`)
+	scatteringComposite := strings.Index(script, `float tyndall_value`)
+	if waterComposite < 0 || scatteringComposite < 0 || scatteringComposite <= waterComposite {
+		t.Error("丁达尔散射必须在器物与水面之后参与最终合成，避免被后续颜色覆盖")
 	}
 
 	literalSmoothstep := regexp.MustCompile(`smoothstep\(([0-9]+(?:\.[0-9]+)?),\s*([0-9]+(?:\.[0-9]+)?)`)
@@ -95,8 +112,9 @@ func TestCeladonRainRendererUsesPhysicalWebGL2Passes(t *testing.T) {
 		`.wind-compass`, `.wind-compass__dial`, `.wind-compass__needle`,
 		`.wind-direction--northeast`, `.wind-direction--southeast`,
 		`.wind-direction--southwest`, `.wind-direction--northwest`, `--wind-flow-angle`,
-		`.stage-instruments`, `.light-controls`, `.light-control-body`, `.light-effect`,
-		`.effect-toggle`, `[data-breathing="off"]`, `[data-tyndall="off"]`,
+		`.stage-instruments`, `.light-controls`, `.light-control-body`, `.light-source`,
+		`.light-source-picker`, `.source-sliders`, `.light-effect`, `.effect-toggle`,
+		`[aria-checked="false"]`, `[data-breathing="off"]`, `[data-tyndall="off"]`,
 		`min-height: 1100px`,
 		`--paper: #f4eedf`, `--celadon: #7fa99a`, `--deep-water: #3f6f66`,
 		`@media (max-width: 640px)`, `prefers-reduced-motion`, `:focus-visible`,
